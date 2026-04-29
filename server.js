@@ -26,6 +26,7 @@ connectDB();
 const app = express();
 app.use(cors());
 app.use(express.json());
+app.set('trust proxy', 1);
 
 // ─── Rate limiting ────────────────────────────────────────────────────────────
 // General limiter on all /api routes (auth routes get a stricter limiter in routes/auth.js)
