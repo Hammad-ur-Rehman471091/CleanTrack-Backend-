@@ -1,17 +1,21 @@
 // routes/auth.js
-// Extracted from server.js (Phase 1 refactor)
-// Handles: POST /api/auth/signup, POST /api/auth/login, GET /api/auth/me
+// Phase 1 refactor: extracted from server.js
+// Phase 3 refactor:
+//   - JWT secret/expiry read from config/appConfig.js
+//   - auth rate limiter applied to login and signup endpoints
 
-const express = require('express');
-const bcrypt  = require('bcryptjs');
-const jwt     = require('jsonwebtoken');
-const User    = require('../models/User');
-const { authMiddleware } = require('../middleware/auth');
+const express     = require('express');
+const bcrypt      = require('bcryptjs');
+const jwt         = require('jsonwebtoken');
+const User        = require('../models/User');
+const appConfig   = require('../config/appConfig');
+const { authMiddleware }       = require('../middleware/auth');
+const { authLimiter }          = require('../middleware/rateLimit');
 
 const router = express.Router();
 
 // POST /api/auth/signup
-router.post('/signup', async (req, res) => {
+router.post('/signup', authLimiter, async (req, res) => {
   try {
     const { name, email, password, role } = req.body;
 
@@ -35,8 +39,8 @@ router.post('/signup', async (req, res) => {
 
     const token = jwt.sign(
       { id: user._id, name: user.name, email: user.email, role: user.role },
-      process.env.JWT_SECRET || 'fallback_secret',
-      { expiresIn: '7d' }
+      appConfig.jwtSecret,
+      { expiresIn: appConfig.jwtExpiry }
     );
 
     res.status(201).json({
@@ -50,7 +54,7 @@ router.post('/signup', async (req, res) => {
 });
 
 // POST /api/auth/login
-router.post('/login', async (req, res) => {
+router.post('/login', authLimiter, async (req, res) => {
   try {
     const { email, password } = req.body;
 
@@ -70,8 +74,8 @@ router.post('/login', async (req, res) => {
 
     const token = jwt.sign(
       { id: user._id, name: user.name, email: user.email, role: user.role },
-      process.env.JWT_SECRET || 'fallback_secret',
-      { expiresIn: '7d' }
+      appConfig.jwtSecret,
+      { expiresIn: appConfig.jwtExpiry }
     );
 
     res.json({

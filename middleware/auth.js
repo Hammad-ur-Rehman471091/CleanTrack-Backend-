@@ -1,8 +1,9 @@
 // middleware/auth.js
-// Extracted from server.js (Phase 1 refactor)
-// Provides: authMiddleware (JWT verification) and requireRole (role guard factory)
+// Phase 1 refactor: extracted from server.js
+// Phase 3 refactor: reads JWT secret from config/appConfig.js instead of process.env directly
 
-const jwt = require('jsonwebtoken');
+const jwt       = require('jsonwebtoken');
+const appConfig = require('../config/appConfig');
 
 function authMiddleware(req, res, next) {
   const authHeader = req.headers['authorization'];
@@ -12,7 +13,7 @@ function authMiddleware(req, res, next) {
   if (!token) return res.status(401).json({ message: 'Token format: Bearer <token>' });
 
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'fallback_secret');
+    const decoded = jwt.verify(token, appConfig.jwtSecret);
     req.user = decoded;
     next();
   } catch (err) {

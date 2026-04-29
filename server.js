@@ -1,12 +1,16 @@
 // server.js — CleanTrack Backend entry point
-// Phase 1 refactor: this file now only wires together config, middleware and routes.
-// All logic lives in config/, middleware/, models/, and routes/.
+// Phase 1 refactor: wires together config, middleware, and routes
+// Phase 3 refactor:
+//   - general rate limiter applied to all /api routes
+//   - PORT read from config/appConfig.js
 
 require('dotenv').config();
 
-const express    = require('express');
-const cors       = require('cors');
-const connectDB  = require('./config/db');
+const express          = require('express');
+const cors             = require('cors');
+const connectDB        = require('./config/db');
+const appConfig        = require('./config/appConfig');
+const { generalLimiter } = require('./middleware/rateLimit');
 
 // Route modules
 const authRoutes      = require('./routes/auth');
@@ -23,6 +27,10 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+// ─── Rate limiting ────────────────────────────────────────────────────────────
+// General limiter on all /api routes (auth routes get a stricter limiter in routes/auth.js)
+app.use('/api', generalLimiter);
+
 // ─── Mount routes ─────────────────────────────────────────────────────────────
 app.use('/api/auth',      authRoutes);
 app.use('/api/projects',  projectRoutes);
@@ -37,5 +45,4 @@ app.get('/api/health', (req, res) => res.json({ status: 'OK', timestamp: new Dat
 app.use((req, res) => res.status(404).json({ message: 'Route not found' }));
 
 // ─── Start server ─────────────────────────────────────────────────────────────
-const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => console.log(`CleanTrack server running on port ${PORT}`));
+app.listen(appConfig.port, () => console.log(`CleanTrack server running on port ${appConfig.port}`));

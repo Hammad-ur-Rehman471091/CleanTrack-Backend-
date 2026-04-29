@@ -1,12 +1,15 @@
 // routes/issues.js
-// Extracted from server.js (Phase 1 refactor)
-// Handles: POST, GET /api/issues, GET /api/issues/:id,
-//          PATCH /api/issues/:id/assign, PATCH /api/issues/:id/status
+// Phase 1 refactor: extracted from server.js
+// Phase 3 refactor:
+//   - GET /api/issues now supports pagination (?page=1&limit=10)
+//   - GET /api/issues now supports search (?search=login+bug)
+//   - response includes pagination metadata { total, page, limit, totalPages }
 
-const express = require('express');
-const Issue   = require('../models/Issue');
-const Project = require('../models/Project');
-const User    = require('../models/User');
+const express   = require('express');
+const Issue     = require('../models/Issue');
+const Project   = require('../models/Project');
+const User      = require('../models/User');
+const appConfig = require('../config/appConfig');
 const { authMiddleware, requireRole } = require('../middleware/auth');
 
 const router = express.Router();
@@ -23,13 +26,7 @@ router.post('/', authMiddleware, requireRole('tester'), async (req, res) => {
     const projectExists = await Project.findById(project);
     if (!projectExists) return res.status(404).json({ message: 'Project not found' });
 
-    const issue = new Issue({
-      title,
-      description,
-      stepsToReproduce,
-      project,
-      reportedBy: req.user.id
-    });
+    const issue = new Issue({ title, description, stepsToReproduce, project, reportedBy: req.user.id });
     await issue.save();
     await issue.populate([
       { path: 'reportedBy', select: 'name email role' },
@@ -43,21 +40,48 @@ router.post('/', authMiddleware, requireRole('tester'), async (req, res) => {
   }
 });
 
-// GET /api/issues — role-based filtering
+// GET /api/issues — role-based filtering + pagination + search
+// Query params: page (default 1), limit (default 10, max 50), search (title/description)
 router.get('/', authMiddleware, async (req, res) => {
   try {
-    let query = {};
-    if (req.user.role === 'tester')    query.reportedBy = req.user.id;
-    if (req.user.role === 'developer') query.assignedTo = req.user.id;
-    // manager: no filter — sees everything
+    // --- role filter ---
+    const baseQuery = {};
+    if (req.user.role === 'tester')    baseQuery.reportedBy = req.user.id;
+    if (req.user.role === 'developer') baseQuery.assignedTo  = req.user.id;
 
-    const issues = await Issue.find(query)
-      .populate('reportedBy', 'name email role')
-      .populate('assignedTo', 'name email role')
-      .populate('project',    'name')
-      .sort({ createdAt: -1 });
+    // --- search filter ---
+    const { search, page, limit: limitParam } = req.query;
+    if (search && search.trim()) {
+      const regex = new RegExp(search.trim(), 'i');
+      baseQuery.$or = [{ title: regex }, { description: regex }];
+    }
 
-    res.json({ issues });
+    // --- pagination ---
+    const { defaultPage, defaultLimit, maxLimit } = appConfig.pagination;
+    const currentPage  = Math.max(1, parseInt(page,       10) || defaultPage);
+    const currentLimit = Math.min(maxLimit, Math.max(1, parseInt(limitParam, 10) || defaultLimit));
+    const skip         = (currentPage - 1) * currentLimit;
+
+    const [issues, total] = await Promise.all([
+      Issue.find(baseQuery)
+        .populate('reportedBy', 'name email role')
+        .populate('assignedTo', 'name email role')
+        .populate('project',    'name')
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(currentLimit),
+      Issue.countDocuments(baseQuery),
+    ]);
+
+    res.json({
+      issues,
+      pagination: {
+        total,
+        page:       currentPage,
+        limit:      currentLimit,
+        totalPages: Math.ceil(total / currentLimit),
+      },
+    });
   } catch (err) {
     console.error('Get issues error:', err);
     res.status(500).json({ message: 'Server error fetching issues' });
@@ -109,7 +133,6 @@ router.patch('/:id/assign', authMiddleware, requireRole('manager'), async (req, 
       .populate('project',    'name');
 
     if (!issue) return res.status(404).json({ message: 'Issue not found' });
-
     res.json({ issue });
   } catch (err) {
     console.error('Assign issue error:', err);
