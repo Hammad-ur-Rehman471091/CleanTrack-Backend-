@@ -1,5 +1,5 @@
 // models/Issue.js
-// Extracted from server.js (Phase 1 refactor)
+// Updated: issues are scoped to a team
 
 const mongoose = require('mongoose');
 
@@ -12,6 +12,7 @@ const issueSchema = new mongoose.Schema({
     enum:    ['open', 'in_progress', 'resolved'],
     default: 'open'
   },
+  team:       { type: mongoose.Schema.Types.ObjectId, ref: 'Team',    required: true },
   project:    { type: mongoose.Schema.Types.ObjectId, ref: 'Project', required: true },
   reportedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User',    required: true },
   assignedTo: { type: mongoose.Schema.Types.ObjectId, ref: 'User',    default: null },
@@ -19,7 +20,6 @@ const issueSchema = new mongoose.Schema({
   updatedAt:  { type: Date, default: Date.now }
 });
 
-// Auto-update updatedAt on save
 issueSchema.pre('save', function (next) {
   this.updatedAt = Date.now();
   next();
